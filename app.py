@@ -6,7 +6,7 @@ import textwrap
 import tempfile
 from dotenv import load_dotenv
 
-from langchain.llms import Together
+from langchain_community.llms import Together
 from langchain.chains import ConversationalRetrievalChain
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -58,9 +58,9 @@ def create_vectorstore(chunks):
 # 🧠 Setup LangChain QA chain
 def create_qa_chain(vectordb):
     llm = Together(
-        model=TOGETHER_MODEL,
-        api_key=TOGETHER_API_KEY,
-        temperature=0.2
+        model="meta-llama/Llama-3-8b-chat-hf",
+        temperature=0.2,
+        together_api_key=TOGETHER_API_KEY
     )
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
