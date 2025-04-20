@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 # 🔐 Load environment variable (locally only)
 load_dotenv()
-TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 TOGETHER_MODEL = "meta-llama/Llama-3-8b-instruct"  # safer version
 
 @st.cache_resource
