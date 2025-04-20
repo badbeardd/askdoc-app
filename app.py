@@ -7,12 +7,17 @@ import os
 import textwrap
 import tempfile
 import requests
-from dotenv import load_dotenv
 
-# 🔐 Load environment variable (locally only)
-load_dotenv()
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-TOGETHER_MODEL = "meta-llama/Llama-3-8b-chat-hf"  # safer version
+# 🔐 Use secrets from Streamlit Cloud OR fallback to local .env
+try:
+    TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
+except Exception:
+    from dotenv import load_dotenv
+    load_dotenv()
+    TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+
+TOGETHER_MODEL = "meta-llama/Llama-3-8b-chat-hf"
+
 @st.cache_resource
 def load_model():
     return SentenceTransformer('intfloat/e5-large-v2')
