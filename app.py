@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 load_dotenv()
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 TOGETHER_MODEL = "meta-llama/Llama-3-8b-instruct"  # safer version
-
 @st.cache_resource
 def load_model():
     return SentenceTransformer('intfloat/e5-large-v2')
