@@ -12,6 +12,24 @@ from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.docstore.document import Document
+from langchain.prompts import PromptTemplate
+
+CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
+You are a helpful AI assistant. Answer the user’s question based on the provided context. 
+Be **concise** and **summarize key points** only. If the answer is too long, shorten it to fit within a short paragraph.
+
+Context:
+{context}
+
+Chat History:
+{chat_history}
+
+Question:
+{question}
+
+Answer (short and to-the-point):
+""")
+
 
 # 🔐 Load API Key
 try:
@@ -58,7 +76,7 @@ def create_vectorstore(chunks):
 # 🧠 Setup LangChain QA chain
 def create_qa_chain(vectordb):
     llm = Together(
-        model="meta-llama/Llama-3-8b-chat-hf",
+        model=TOGETHER_MODEL,
         temperature=0.2,
         together_api_key=TOGETHER_API_KEY
     )
@@ -68,9 +86,13 @@ def create_qa_chain(vectordb):
         llm=llm,
         retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
-        return_source_documents=False
+        return_source_documents=False,
+        combine_docs_chain_kwargs={
+            "prompt": CONDENSE_QUESTION_PROMPT
+        }
     )
     return qa_chain
+
 
 # 🧠 Session state
 if "qa_chain" not in st.session_state:
