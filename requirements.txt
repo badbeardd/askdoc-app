@@ -4,3 +4,5 @@ faiss-cpu
 PyMuPDF
 python-dotenv
 requests
+langchain
+langchain-community
