@@ -13,12 +13,12 @@ import os
 import textwrap
 import tempfile
 from dotenv import load_dotenv
-
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.llms import Together
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationSummaryBufferMemory
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
@@ -87,7 +87,10 @@ def load_and_chunk(file):
     finally:
         os.remove(temp_path)  # ✅ Safe to remove after doc is closed
 
-    chunks = textwrap.wrap(text, width=500, break_long_words=False)
+    # ✅ Use better chunking
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    chunks = splitter.split_text(text)
     return chunks
 
 
@@ -102,10 +105,14 @@ def create_vectorstore(chunks):
 def create_qa_chain(vectordb):
     llm = Together(
         model=TOGETHER_MODEL,
-        temperature=0.2,
+        temperature=0.7,
         together_api_key=TOGETHER_API_KEY
     )
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    memory = ConversationSummaryBufferMemory(
+    llm=llm,
+    memory_key="chat_history",
+    return_messages=True
+    )
 
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
