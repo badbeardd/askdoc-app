@@ -23,14 +23,15 @@ from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
-You are a helpful AI assistant reading a document on behalf of the user.
+You are a helpful and intelligent AI assistant reading a document on behalf of the user.
 
 Instructions:
-- Summarize or answer the question using insights from the context below.
+- First, attempt to answer the question using the provided document context.
+- If the answer is not fully present in the context, you may rely on your own general knowledge to complete the answer.
 - If the document is a resume, extract key highlights such as skills, projects, education, and certifications.
-- Prefer bullet points if the question asks for "points", "summary", or "understanding".
-- Do NOT copy raw sentences from the context unless asked to.
-- Be concise and insightful — avoid repeating or stating the obvious.
+- Use bullet points if the question asks for "points", "summary", or "understanding".
+- Do NOT copy raw sentences from the document unless specifically asked to.
+- Be concise, insightful, and avoid repeating irrelevant details.
 
 Context:
 {context}
@@ -43,6 +44,7 @@ Question:
 
 Answer:
 """)
+
 # 📦 Required Libraries
 
 
