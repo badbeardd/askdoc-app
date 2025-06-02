@@ -127,13 +127,15 @@ if "file_hash" not in st.session_state:
 # 📥 File processing + vectorstore caching
 if uploaded_file is not None:
     current_hash = get_file_hash(uploaded_file)
-    if current_hash != st.session_state.file_hash:
-        chunks = load_and_chunk(uploaded_file)
-        vectordb = create_vectorstore(chunks)
-        st.session_state.vectorstore = vectordb
-        st.session_state.qa_chain = create_qa_chain(vectordb)
-        st.session_state.file_hash = current_hash
-        st.success(f"✅ Document indexed with {len(chunks)} chunks.")
+    if current_hash != st.session_state.get("file_hash"):
+        if "doc_loaded" not in st.session_state:
+            chunks = load_and_chunk(uploaded_file)
+            vectordb = create_vectorstore(chunks)
+            st.session_state.vectorstore = vectordb
+            st.session_state.qa_chain = create_qa_chain(vectordb)
+            st.session_state.file_hash = current_hash
+            st.session_state.doc_loaded = True
+            st.success(f"✅ Document indexed with {len(chunks)} chunks.")
     else:
         st.info("📂 Same document detected. Skipping reprocessing.")
 
