@@ -57,6 +57,24 @@ except Exception:
 
 TOGETHER_MODEL = "meta-llama/Llama-3-8b-chat-hf"
 
+# ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
+import re
+
+def clean_output(text: str) -> str:
+    """
+    Cleans common garbage from LLM output like repetitive pipes, markdown junk, or AI assistant tags.
+    """
+    # Remove trailing pipe symbols and formatting junk
+    text = re.sub(r"(\|\s*){3,}", "", text)
+
+    # Remove repeated "AI Assistant" or signature-like tails
+    text = re.sub(r"(AI Assistant\.?\s*){2,}", "", text, flags=re.IGNORECASE)
+
+    # Remove long sequences of pipes/spaces/newlines at the end
+    text = re.sub(r"\n?[\|\s]{20,}$", "", text)
+
+    return text.strip()
+
 def generate_answer(question: str, qa_chain=None, fallback_llm=None) -> str:
     """
     Run question through QA chain, fallback to base LLM if needed.
@@ -79,7 +97,7 @@ def generate_answer(question: str, qa_chain=None, fallback_llm=None) -> str:
         else:
             answer = "⚠️ No model available to generate an answer."
 
-    return answer
+    return clean_output(answer.strip())
 
 # 📘 Streamlit UI
 st.set_page_config(page_title="AskDoc – Conversational RAG", layout="wide")
