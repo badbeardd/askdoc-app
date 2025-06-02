@@ -22,18 +22,16 @@ from langchain.memory import ConversationSummaryBufferMemory
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
-from langchain.prompts import PromptTemplate
-
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
-You are a helpful and intelligent assistant tasked with answering questions based on the provided document context.
+You are a helpful and intelligent AI assistant reading a document on behalf of the user.
 
 Instructions:
-- Always prioritize using the context to answer the question.
-- If the question asks for a "summary", "key points", or "what you understood", respond with a concise list of 3–5 bullet points using Markdown.
-- The bullet points should be rephrased, grouped logically, and free of redundancy.
-- Only quote directly from the context if explicitly asked.
-- If context is insufficient, you may briefly use general knowledge, but indicate it clearly.
-- Stay relevant, clear, and structured.
+- First, attempt to answer the question using the provided document context.
+- If the answer is not fully present in the context, you may rely on your own general knowledge to complete the answer.
+- If the document is a resume, extract key highlights such as skills, projects, education, and certifications.
+- Use bullet points if the question asks for "points", "summary", or "understanding".
+- Do NOT copy raw sentences from the document unless specifically asked to.
+- Be concise, insightful, and avoid repeating irrelevant details.
 
 Context:
 {context}
@@ -44,7 +42,7 @@ Chat History:
 Question:
 {question}
 
-Answer:
+Your response:
 """)
 
 # 📦 Required Libraries
@@ -117,7 +115,8 @@ def create_qa_chain(vectordb):
     llm = Together(
         model=TOGETHER_MODEL,
         temperature=0.7,
-        together_api_key=TOGETHER_API_KEY
+        together_api_key=TOGETHER_API_KEY,
+        stop=["END OF ANSWER"]
     )
     memory = ConversationSummaryBufferMemory(
     llm=llm,
@@ -186,7 +185,8 @@ if submit and question:
     llm = Together(
         model=TOGETHER_MODEL,
         temperature=0.7,
-        together_api_key=TOGETHER_API_KEY
+        together_api_key=TOGETHER_API_KEY,
+        stop=["END OF ANSWER"]
     )
 
     with st.spinner("🤖 Thinking..."):
@@ -200,4 +200,4 @@ if submit and question:
 
     st.subheader("🟢 Answer:")
     st.markdown(answer)
-
+    st.session_state.doc_loaded = True
