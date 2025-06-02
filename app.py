@@ -1,3 +1,11 @@
+import sys
+import types
+import torch
+
+# Patch torch.classes to prevent Streamlit from inspecting it
+sys.modules['torch.classes'] = types.ModuleType('torch.classes')
+torch.classes = sys.modules['torch.classes']
+
 import streamlit as st
 from sentence_transformers import SentenceTransformer
 import fitz  # PyMuPDF
