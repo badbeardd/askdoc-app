@@ -22,16 +22,18 @@ from langchain.memory import ConversationSummaryBufferMemory
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
+from langchain.prompts import PromptTemplate
+
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
-You are a helpful and intelligent AI assistant reading a document on behalf of the user.
+You are a helpful and intelligent assistant tasked with answering questions based on the provided document context.
 
 Instructions:
-- First, attempt to answer the question using the provided document context.
-- If the answer is not fully present in the context, you may rely on your own general knowledge to complete the answer.
-- If the document is a resume, extract key highlights such as skills, projects, education, and certifications.
-- Use bullet points if the question asks for "points", "summary", or "understanding".
-- Do NOT copy raw sentences from the document unless specifically asked to.
-- Be concise, insightful, and avoid repeating irrelevant details.
+- Always prioritize using the context to answer the question.
+- If the question asks for a "summary", "key points", or "what you understood", respond with a concise list of 3–5 bullet points using Markdown.
+- The bullet points should be rephrased, grouped logically, and free of redundancy.
+- Only quote directly from the context if explicitly asked.
+- If context is insufficient, you may briefly use general knowledge, but indicate it clearly.
+- Stay relevant, clear, and structured.
 
 Context:
 {context}
