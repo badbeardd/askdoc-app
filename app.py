@@ -115,8 +115,7 @@ def create_qa_chain(vectordb):
     llm = Together(
         model=TOGETHER_MODEL,
         temperature=0.7,
-        together_api_key=TOGETHER_API_KEY,
-        stop=["END OF ANSWER"]
+        together_api_key=TOGETHER_API_KEY
     )
     memory = ConversationSummaryBufferMemory(
     llm=llm,
@@ -185,8 +184,7 @@ if submit and question:
     llm = Together(
         model=TOGETHER_MODEL,
         temperature=0.7,
-        together_api_key=TOGETHER_API_KEY,
-        stop=["END OF ANSWER"]
+        together_api_key=TOGETHER_API_KEY
     )
 
     with st.spinner("🤖 Thinking..."):
