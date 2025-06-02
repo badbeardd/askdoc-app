@@ -23,8 +23,14 @@ from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
-You are a helpful AI assistant. Answer the user’s question based on the provided context. 
-Be **concise** and **summarize key points** only. If the answer is too long, shorten it to fit within a short paragraph.
+You are a helpful AI assistant reading a document on behalf of the user.
+
+Instructions:
+- Summarize or answer the question using insights from the context below.
+- If the document is a resume, extract key highlights such as skills, projects, education, and certifications.
+- Prefer bullet points if the question asks for "points", "summary", or "understanding".
+- Do NOT copy raw sentences from the context unless asked to.
+- Be concise and insightful — avoid repeating or stating the obvious.
 
 Context:
 {context}
@@ -35,8 +41,9 @@ Chat History:
 Question:
 {question}
 
-Answer (short and to-the-point):
+Answer:
 """)
+# 📦 Required Libraries
 
 
 # 🔐 Load API Key
