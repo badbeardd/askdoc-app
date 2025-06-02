@@ -183,10 +183,21 @@ else:
 
 # 🧾 Ask Question
 if submit and question:
-    if not st.session_state.qa_chain:
-        st.warning("⚠️ Please upload a document first.")
-    else:
-        with st.spinner("🤖 Thinking..."):
-            answer = st.session_state.qa_chain.run(question)
-        st.subheader("🟢 Answer:")
-        st.markdown(f"> {answer}")
+    llm = Together(
+        model=TOGETHER_MODEL,
+        temperature=0.7,
+        together_api_key=TOGETHER_API_KEY
+    )
+
+    with st.spinner("🤖 Thinking..."):
+        if st.session_state.get("qa_chain"):
+            try:
+                answer = st.session_state.qa_chain.run(question)
+            except Exception:
+                answer = llm.invoke(question) + "\n\n_(Used general knowledge due to a fallback)_"
+        else:
+            answer = llm.invoke(question) + "\n\n_(No document provided. Used general knowledge.)_"
+
+    st.subheader("🟢 Answer:")
+    st.markdown(answer)
+
