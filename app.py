@@ -57,6 +57,30 @@ except Exception:
 
 TOGETHER_MODEL = "meta-llama/Llama-3-8b-chat-hf"
 
+def generate_answer(question: str, qa_chain=None, fallback_llm=None) -> str:
+    """
+    Run question through QA chain, fallback to base LLM if needed.
+    """
+    if qa_chain:
+        try:
+            answer = qa_chain.run(question)
+            if not answer.strip() or len(answer.strip()) < 10:
+                raise ValueError("Answer too short or empty, triggering fallback.")
+        except Exception:
+            if fallback_llm:
+                answer = fallback_llm.invoke(question)
+                answer += "\n\n_(Used general knowledge due to a fallback)_"
+            else:
+                answer = "⚠️ Could not retrieve an answer."
+    else:
+        if fallback_llm:
+            answer = fallback_llm.invoke(question)
+            answer += "\n\n_(No document provided. Used general knowledge.)_"
+        else:
+            answer = "⚠️ No model available to generate an answer."
+
+    return answer
+
 # 📘 Streamlit UI
 st.set_page_config(page_title="AskDoc – Conversational RAG", layout="wide")
 st.title("📘 AskDoc – Smart Conversational PDF Q&A")
@@ -181,21 +205,18 @@ else:
 
 # 🧾 Ask Question
 if submit and question:
-    llm = Together(
-        model=TOGETHER_MODEL,
-        temperature=0.7,
-        together_api_key=TOGETHER_API_KEY
-    )
-
     with st.spinner("🤖 Thinking..."):
-        if st.session_state.get("qa_chain"):
-            try:
-                answer = st.session_state.qa_chain.run(question)
-            except Exception:
-                answer = llm.invoke(question) + "\n\n_(Used general knowledge due to a fallback)_"
-        else:
-            answer = llm.invoke(question) + "\n\n_(No document provided. Used general knowledge.)_"
+        fallback_llm = Together(
+            model=TOGETHER_MODEL,
+            temperature=0.7,
+            together_api_key=TOGETHER_API_KEY
+        )
+        answer = generate_answer(
+            question=question,
+            qa_chain=st.session_state.get("qa_chain"),
+            fallback_llm=fallback_llm
+        )
 
     st.subheader("🟢 Answer:")
-    st.markdown(answer)
-    st.session_state.doc_loaded = True
+    st.markdown(f"> {answer}")
+
