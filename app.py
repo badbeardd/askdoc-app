@@ -63,6 +63,9 @@ uploaded_file = st.file_uploader("Upload a PDF or TXT file", type=["pdf", "txt"]
 question = st.text_input("💬 Ask something about the document")
 submit = st.button("🔍 Ask")
 
+# 🔁 Use cached file if uploader returns None on rerun
+file = uploaded_file or st.session_state.get("uploaded_file")
+
 # 🔧 Text splitting
 def load_and_chunk(file):
     text = ""
@@ -123,21 +126,42 @@ if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 if "file_hash" not in st.session_state:
     st.session_state.file_hash = None
+if "doc_loaded" not in st.session_state:    
+    st.session_state.doc_loaded = False
 
-# 📥 File processing + vectorstore caching
-if uploaded_file is not None:
-    current_hash = get_file_hash(uploaded_file)
-    if current_hash != st.session_state.get("file_hash"):
-        if "doc_loaded" not in st.session_state:
-            chunks = load_and_chunk(uploaded_file)
-            vectordb = create_vectorstore(chunks)
-            st.session_state.vectorstore = vectordb
-            st.session_state.qa_chain = create_qa_chain(vectordb)
-            st.session_state.file_hash = current_hash
-            st.session_state.doc_loaded = True
-            st.success(f"✅ Document indexed with {len(chunks)} chunks.")
+
+# 🔁 Session defaults
+for key, default in {
+    "uploaded_file": None,
+    "file_hash": None,
+    "doc_loaded": False,
+    "vectorstore": None,
+    "qa_chain": None
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# 📥 File processing
+file = uploaded_file or st.session_state["uploaded_file"]
+
+if file is not None:
+    if st.session_state["uploaded_file"] is None:
+        st.session_state["uploaded_file"] = file
+
+    current_hash = get_file_hash(file)
+
+    if current_hash != st.session_state["file_hash"]:
+        chunks = load_and_chunk(file)
+        vectordb = create_vectorstore(chunks)
+        st.session_state.vectorstore = vectordb
+        st.session_state.qa_chain = create_qa_chain(vectordb)
+        st.session_state.file_hash = current_hash
+        st.success(f"✅ Document indexed with {len(chunks)} chunks.")
     else:
         st.info("📂 Same document detected. Skipping reprocessing.")
+else:
+    st.info("📂 Please upload a PDF or TXT document.")
+
 
 # 🧾 Ask Question
 if submit and question:
