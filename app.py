@@ -14,7 +14,8 @@ import textwrap
 import tempfile
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.llms import Together
+#from langchain_community.llms import Together
+from langchain_together import Together
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
