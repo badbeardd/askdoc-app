@@ -55,7 +55,7 @@ except Exception:
     load_dotenv()
     TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
-TOGETHER_MODEL = "meta-llama/Llama-3-8b-chat-hf"
+TOGETHER_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 
 # ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
 import re
