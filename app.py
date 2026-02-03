@@ -56,7 +56,8 @@ except Exception:
     load_dotenv()
     TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
-TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
+#TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
+TOGETHER_MODEL = "deepseek-ai/DeepSeek-R1"
 
 # ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
 import re
