@@ -13,7 +13,7 @@ import os
 import textwrap
 import tempfile
 from dotenv import load_dotenv
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 #from langchain_community.llms import Together
 from langchain_together import Together
 from langchain.chains import ConversationalRetrievalChain
