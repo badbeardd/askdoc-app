@@ -23,28 +23,26 @@ from langchain.memory import ConversationSummaryBufferMemory
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
-CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template("""
-You are a helpful and intelligent AI assistant reading a document on behalf of the user.
-
-Instructions:
-- First, attempt to answer the question using the provided document context.
-- If the answer is not fully present in the context, you may rely on your own general knowledge to complete the answer.
-- If the document is a resume, extract key highlights such as skills, projects, education, and certifications.
-- Use bullet points if the question asks for "points", "summary", or "understanding".
-- Do NOT copy raw sentences from the document unless specifically asked to.
-- Be concise, insightful, and avoid repeating irrelevant details.
-
-Context:
-{context}
+# 1. Prompt to rewrite the user's question (Handle follow-ups)
+condense_prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.
 
 Chat History:
 {chat_history}
+Follow Up Input: {question}
+Standalone question:"""
+CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(condense_prompt_template)
 
-Question:
-{question}
+# 2. Prompt to Answer the Question (The Strict Fix)
+qa_prompt_template = """You are a helpful AI assistant. Use the following pieces of context to answer the question at the end.
+If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
-Your response:
-""")
+{context}
+
+Question: {question}
+Helpful Answer:"""
+QA_PROMPT = PromptTemplate(
+    template=qa_prompt_template, input_variables=["context", "question"]
+)
 
 # 📦 Required Libraries
 
@@ -158,23 +156,24 @@ def create_vectorstore(chunks):
 def create_qa_chain(vectordb):
     llm = Together(
         model=TOGETHER_MODEL,
-        temperature=0.7,
+        temperature=0.0, # Set to 0 to stop creativity/hallucinations
         together_api_key=TOGETHER_API_KEY
     )
+    
     memory = ConversationSummaryBufferMemory(
-    llm=llm,
-    memory_key="chat_history",
-    return_messages=True
+        llm=llm,
+        memory_key="chat_history",
+        return_messages=True,
+        max_token_limit=1000
     )
 
     qa_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
-        return_source_documents=False,
-        combine_docs_chain_kwargs={
-            "prompt": CONDENSE_QUESTION_PROMPT
-        }
+        # KEY FIX: Separate the question rewriting from the answering
+        condense_question_prompt=CONDENSE_QUESTION_PROMPT,
+        combine_docs_chain_kwargs={"prompt": QA_PROMPT} 
     )
     return qa_chain
 
