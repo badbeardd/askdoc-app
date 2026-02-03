@@ -57,21 +57,23 @@ except Exception:
 #TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
 TOGETHER_MODEL = "deepseek-ai/DeepSeek-R1"
 
+
 # ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
 import re
 
 def clean_output(text: str) -> str:
     """
-    Cleans common garbage from LLM output like repetitive pipes, markdown junk, or AI assistant tags.
+    Cleans DeepSeek's internal 'thinking' logs and other junk so you only see the final answer.
     """
-    # Remove trailing pipe symbols and formatting junk
+    # 1. Remove DeepSeek's <think>...</think> block (The most important fix)
+    # flags=re.DOTALL ensures it catches newlines inside the tags
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    
+    # 2. Remove repetitive pipes or markdown junk (from your old function)
     text = re.sub(r"(\|\s*){3,}", "", text)
-
-    # Remove repeated "AI Assistant" or signature-like tails
+    
+    # 3. Remove "AI Assistant" signatures
     text = re.sub(r"(AI Assistant\.?\s*){2,}", "", text, flags=re.IGNORECASE)
-
-    # Remove long sequences of pipes/spaces/newlines at the end
-    text = re.sub(r"\n?[\|\s]{20,}$", "", text)
 
     return text.strip()
 
