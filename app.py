@@ -56,7 +56,7 @@ except Exception:
     load_dotenv()
     TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
-TOGETHER_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
 
 # ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
 import re
