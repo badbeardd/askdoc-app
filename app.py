@@ -129,13 +129,14 @@ def create_vectorstore(chunks):
     return vectordb
 
 def create_qa_chain(vectordb):
-    # FIXED INDENTATION HERE
     llm = Together(
         model=TOGETHER_MODEL,
         temperature=0.6,
         together_api_key=TOGETHER_API_KEY,
-        # STOP SEQUENCES (The Kill Switch)
-        stop=["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
+        # ✅ FIX: Move 'stop' inside 'model_kwargs' so it doesn't crash Pydantic
+        model_kwargs={
+            "stop": ["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
+        }
     )
     
     memory = ConversationSummaryBufferMemory(
