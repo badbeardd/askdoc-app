@@ -71,29 +71,24 @@ import re
 
 def clean_output(text: str) -> str:
     """
-    Removes DeepSeek's 'thinking', 'jupyter' hallucinations, and 'self-grading' text.
+    Final aggressive cleaner for DeepSeek's 'hallucinations'.
     """
-    # 1. Remove the initial "response =" and python garbage
-    text = re.sub(r'response\s*=\s*get_completion.*', '', text)
-    text = re.sub(r'print\(response\).*', '', text)
-    text = re.sub(r'<jupyter_output>', '', text)
-    text = re.sub(r'<jupyter_text>', '', text)
-    text = re.sub(r'<jupyter_code>', '', text)
+    # 1. Kill the specific "prompt =" repetition at the end
+    # This acts like a guillotine - chops off everything after the bad words
+    bad_triggers = ["prompt =", "prompt=", "Define the system", "Example 2:", "The model correctly"]
+    
+    for trigger in bad_triggers:
+        if trigger in text:
+            text = text.split(trigger)[0] # Keep only what came BEFORE the trigger
+
+    # 2. Remove DeepSeek's <think> tags (if any remain)
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     
-    # 2. Remove Python Docstring quotes & Markdown blocks
-    text = text.replace('"""', '').replace("'''", "")
+    # 3. Remove "Jupyter" or "Python" garbage formatting
+    text = text.replace('"""', '').replace("'''", "") # Removes grey box effect
     text = text.replace('```python', '').replace('```', '')
-
-    # 3. (NEW) Remove the "Self-Grading" and "Example" text at the end
-    # This catches "The model correctly identifies..." or "The response adheres..."
-    text = re.sub(r'The model correctly.*', '', text, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'The response adheres.*', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'<jupyter_output>.*', '', text, flags=re.DOTALL)
     
-    # 4. Remove "Example X:" or "prompt" at the very end
-    text = re.sub(r'Example \d+:.*', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\bprompt\s*$', '', text, flags=re.IGNORECASE)
-
     return text.strip()
 
 def generate_answer(question: str, qa_chain=None, fallback_llm=None) -> str:
@@ -176,10 +171,22 @@ def create_vectorstore(chunks):
 # 🧠 Setup LangChain QA chain
 def create_qa_chain(vectordb):
     llm = Together(
-        model=TOGETHER_MODEL,
-        temperature=0.0, # Set to 0 to stop creativity/hallucinations
-        together_api_key=TOGETHER_API_KEY
-    )
+            model=TOGETHER_MODEL,
+            temperature=0.0, # Keep it strict
+            together_api_key=TOGETHER_API_KEY,
+            # 🛑 KILL SWITCH: Force the model to stop if it tries to write code or self-grade
+            stop=[
+                "<|eot_id|>", 
+                "<|eom_id|>", 
+                "prompt =", 
+                "prompt=", 
+                "Define the system prompt", 
+                "Example:", 
+                "User:", 
+                "Question:", 
+                "Tactic"
+            ]
+        )
     
     memory = ConversationSummaryBufferMemory(
         llm=llm,
