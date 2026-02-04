@@ -70,26 +70,28 @@ import re
 
 def clean_output(text: str) -> str:
     """
-    Aggressively removes DeepSeek's 'thinking', 'jupyter', and 'python code' hallucinations.
+    Removes DeepSeek's 'thinking', 'jupyter' hallucinations, and 'self-grading' text.
     """
-    # 1. Remove the specific "response =" coding junk seen in your screenshot
+    # 1. Remove the initial "response =" and python garbage
     text = re.sub(r'response\s*=\s*get_completion.*', '', text)
     text = re.sub(r'print\(response\).*', '', text)
-    
-    # 2. Remove internal XML-like tags causing the mess
     text = re.sub(r'<jupyter_output>', '', text)
     text = re.sub(r'<jupyter_text>', '', text)
     text = re.sub(r'<jupyter_code>', '', text)
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     
-    # 3. Remove Python Docstring quotes (which make the text GREY)
+    # 2. Remove Python Docstring quotes & Markdown blocks
     text = text.replace('"""', '').replace("'''", "")
-    
-    # 4. Remove Markdown code blocks (which also make text GREY)
     text = text.replace('```python', '').replace('```', '')
 
-    # 5. Remove "Tactic 2" or tutorial nonsense
-    text = re.sub(r'Tactic \d+:.*', '', text)
+    # 3. (NEW) Remove the "Self-Grading" and "Example" text at the end
+    # This catches "The model correctly identifies..." or "The response adheres..."
+    text = re.sub(r'The model correctly.*', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'The response adheres.*', '', text, flags=re.IGNORECASE | re.DOTALL)
+    
+    # 4. Remove "Example X:" or "prompt" at the very end
+    text = re.sub(r'Example \d+:.*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bprompt\s*$', '', text, flags=re.IGNORECASE)
 
     return text.strip()
 
