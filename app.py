@@ -129,25 +129,29 @@ def create_vectorstore(chunks):
     return vectordb
 
 def create_qa_chain(vectordb):
-    llm = Together(
+    # 1. Initialize the Core Model (ONLY valid arguments here)
+    llm_core = Together(
         model=TOGETHER_MODEL,
         temperature=0.6,
-        together_api_key=TOGETHER_API_KEY,
-        # ✅ FIX: Move 'stop' inside 'model_kwargs' so it doesn't crash Pydantic
-        model_kwargs={
-            "stop": ["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
-        }
+        together_api_key=TOGETHER_API_KEY
+        # DO NOT put 'stop' or 'model_kwargs' here, it will crash.
+    )
+
+    # 2. BIND the Stop Sequences (The Safe Way)
+    # This attaches the stop instructions to the model instance safely.
+    llm = llm_core.bind(
+        stop=["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
     )
     
     memory = ConversationSummaryBufferMemory(
-        llm=llm,
+        llm=llm_core, # Use the core model for memory summary (cheaper/simpler)
         memory_key="chat_history",
         return_messages=True,
         max_token_limit=1000
     )
 
     qa_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
+        llm=llm, # Pass the BOUND model here so it uses the stop sequences
         retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
         condense_question_prompt=CONDENSE_QUESTION_PROMPT,
