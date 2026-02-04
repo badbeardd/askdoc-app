@@ -14,13 +14,12 @@ sys.modules['torch.classes'] = types.ModuleType('torch.classes')
 torch.classes = sys.modules['torch.classes']
 
 # --- IMPORTS ---
-# Use the safe fallback for imports
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 except ImportError:
     from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from langchain_together import Together
+from langchain_groq import ChatGroq  # <--- NEW IMPORT
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -29,26 +28,26 @@ from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="AskDoc – Conversational RAG", layout="wide")
-st.title("📘 AskDoc – Smart Conversational PDF Q&A")
+st.set_page_config(page_title="AskDoc – Groq RAG", layout="wide")
+st.title("⚡ AskDoc – Powered by Groq (Fast)")
 
 # 1. SETUP API KEY
 try:
-    TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
+    # Look for GROQ_API_KEY now
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 except Exception:
     load_dotenv()
-    TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not TOGETHER_API_KEY:
-    st.error("❌ API Key missing! Please set TOGETHER_API_KEY in .env or Streamlit secrets.")
+if not GROQ_API_KEY:
+    st.error("❌ API Key missing! Please set GROQ_API_KEY in .env or Streamlit secrets.")
     st.stop()
 
-# 2. SET THE MODEL
-TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
+# 2. SET THE MODEL (The Best Free Model currently)
+GROQ_MODEL = "llama-3.3-70b-versatile" 
 
 # --- PROMPT TEMPLATES ---
 
-# Prompt 1: Rewrite follow-up questions
 condense_prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.
 
 Chat History:
@@ -57,15 +56,12 @@ Follow Up Input: {question}
 Standalone question:"""
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(condense_prompt_template)
 
-# Prompt 2: Strict Answer Prompt (Stops Hallucinations)
-qa_prompt_template = """You are a helpful AI assistant answering questions about a PDF document.
+qa_prompt_template = """You are a helpful AI assistant answering questions about a provided document.
 
-CRITICAL INSTRUCTIONS:
+Instructions:
 1. Answer ONLY based on the context provided below.
-2. Do NOT output Python code, Jupyter blocks, or variables like 'response ='.
-3. Do NOT mention 'Tactic 2' or 'reference text'.
-4. Just give the direct answer in plain text.
-5. STOP immediately after answering. Do not analyze or critique your own answer.
+2. If the answer is not in the context, say "I don't know".
+3. Keep the answer concise and professional.
 
 Context:
 {context}
@@ -77,22 +73,6 @@ QA_PROMPT = PromptTemplate(
 )
 
 # --- HELPER FUNCTIONS ---
-
-def clean_output(text: str) -> str:
-    """
-    Cleans the 'Thinking' logs and other junk from the Apriel/DeepSeek models.
-    """
-    # 1. Remove Apriel/DeepSeek <think> tags
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    
-    # 2. Remove "Reasoning steps" text if it leaks
-    text = re.sub(r'Here are my reasoning steps:.*', '', text, flags=re.DOTALL)
-    
-    # 3. Remove "System Prompt" leakage
-    if "prompt =" in text:
-        text = text.split("prompt =")[0]
-        
-    return text.strip()
 
 def load_and_chunk(file):
     text = ""
@@ -112,14 +92,12 @@ def load_and_chunk(file):
     finally:
         os.remove(tmp_path)
 
-    # Use the global import, don't re-import here
-    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = splitter.split_text(text)
     return chunks
 
 @st.cache_resource
 def get_embedding_model():
-    # Cache to prevent reloading (Faster)
     return HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
 
 def create_vectorstore(chunks):
@@ -129,29 +107,22 @@ def create_vectorstore(chunks):
     return vectordb
 
 def create_qa_chain(vectordb):
-    # 1. Initialize the Core Model (ONLY valid arguments here)
-    llm_core = Together(
-        model=TOGETHER_MODEL,
-        temperature=0.6,
-        together_api_key=TOGETHER_API_KEY
-        # DO NOT put 'stop' or 'model_kwargs' here, it will crash.
-    )
-
-    # 2. BIND the Stop Sequences (The Safe Way)
-    # This attaches the stop instructions to the model instance safely.
-    llm = llm_core.bind(
-        stop=["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
+    # --- GROQ SETUP ---
+    llm = ChatGroq(
+        model=GROQ_MODEL,
+        temperature=0.0, # Keep it strictly factual
+        groq_api_key=GROQ_API_KEY
     )
     
     memory = ConversationSummaryBufferMemory(
-        llm=llm_core, # Use the core model for memory summary (cheaper/simpler)
+        llm=llm,
         memory_key="chat_history",
         return_messages=True,
-        max_token_limit=1000
+        max_token_limit=2000
     )
 
     qa_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm, # Pass the BOUND model here so it uses the stop sequences
+        llm=llm,
         retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
         condense_question_prompt=CONDENSE_QUESTION_PROMPT,
@@ -169,14 +140,13 @@ if "file_hash" not in st.session_state:
 uploaded_file = st.sidebar.file_uploader("Upload PDF or TXT", type=["pdf", "txt"])
 
 if uploaded_file:
-    # Check if file changed
     file_obj = uploaded_file
     file_obj.seek(0)
     current_hash = hashlib.md5(file_obj.read()).hexdigest()
     file_obj.seek(0)
 
     if current_hash != st.session_state.file_hash:
-        with st.spinner("Processing document..."):
+        with st.spinner("Processing on Groq (Fast)..."):
             chunks = load_and_chunk(uploaded_file)
             vectordb = create_vectorstore(chunks)
             st.session_state.qa_chain = create_qa_chain(vectordb)
@@ -195,8 +165,8 @@ if question := st.chat_input("Ask about your document..."):
     if st.session_state.qa_chain:
         with st.spinner("Thinking..."):
             try:
-                res = st.session_state.qa_chain({"question": question})
-                answer = clean_output(res["answer"])
+                res = st.session_state.qa_chain.invoke({"question": question})
+                answer = res["answer"]
                 st.chat_message("assistant").write(answer)
             except Exception as e:
                 st.error(f"Error: {e}")
