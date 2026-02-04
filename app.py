@@ -1,20 +1,25 @@
 import sys
 import types
+import os
+import re
+import hashlib
+import tempfile
+import streamlit as st
+import fitz  # PyMuPDF
+from dotenv import load_dotenv
+
+# --- PATCH TORCH (Fixes Streamlit Cloud issues) ---
 import torch
-print(torch.cuda.is_available())
-# Patch torch.classes to prevent Streamlit from inspecting it
 sys.modules['torch.classes'] = types.ModuleType('torch.classes')
 torch.classes = sys.modules['torch.classes']
-import hashlib
-import streamlit as st
-from sentence_transformers import SentenceTransformer
-import fitz  # PyMuPDF
-import os
-import textwrap
-import tempfile
-from dotenv import load_dotenv
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-#from langchain_community.llms import Together
+
+# --- IMPORTS ---
+# Use the safe fallback for imports
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except ImportError:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 from langchain_together import Together
 from langchain.chains import ConversationalRetrievalChain
 from langchain_community.vectorstores import FAISS
@@ -23,7 +28,27 @@ from langchain.memory import ConversationSummaryBufferMemory
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
-# 1. Prompt to rewrite the user's question (Handle follow-ups)
+# --- CONFIGURATION ---
+st.set_page_config(page_title="AskDoc – Conversational RAG", layout="wide")
+st.title("📘 AskDoc – Smart Conversational PDF Q&A")
+
+# 1. SETUP API KEY
+try:
+    TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
+except Exception:
+    load_dotenv()
+    TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+
+if not TOGETHER_API_KEY:
+    st.error("❌ API Key missing! Please set TOGETHER_API_KEY in .env or Streamlit secrets.")
+    st.stop()
+
+# 2. SET THE MODEL
+TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
+
+# --- PROMPT TEMPLATES ---
+
+# Prompt 1: Rewrite follow-up questions
 condense_prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.
 
 Chat History:
@@ -32,8 +57,7 @@ Follow Up Input: {question}
 Standalone question:"""
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(condense_prompt_template)
 
-# 2. Prompt to Answer the Question (The Strict Fix)
-# --- STRICT PROMPT TO STOP CODE HALLUCINATION ---
+# Prompt 2: Strict Answer Prompt (Stops Hallucinations)
 qa_prompt_template = """You are a helpful AI assistant answering questions about a PDF document.
 
 CRITICAL INSTRUCTIONS:
@@ -41,7 +65,7 @@ CRITICAL INSTRUCTIONS:
 2. Do NOT output Python code, Jupyter blocks, or variables like 'response ='.
 3. Do NOT mention 'Tactic 2' or 'reference text'.
 4. Just give the direct answer in plain text.
-"5. STOP immediately after answering. Do not analyze or critique your own answer."
+5. STOP immediately after answering. Do not analyze or critique your own answer.
 
 Context:
 {context}
@@ -52,141 +76,67 @@ QA_PROMPT = PromptTemplate(
     template=qa_prompt_template, input_variables=["context", "question"]
 )
 
-# 📦 Required Libraries
-
-
-# 🔐 Load API Key
-try:
-    TOGETHER_API_KEY = st.secrets["TOGETHER_API_KEY"]
-except Exception:
-    load_dotenv()
-    TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-
-#TOGETHER_MODEL = "ServiceNow-AI/Apriel-1.6-15b-Thinker"
-TOGETHER_MODEL = "deepseek-ai/DeepSeek-R1"
-
-
-# ✅ Clean LLM output to remove markdown junk, repetition, or assistant tags
-import re
+# --- HELPER FUNCTIONS ---
 
 def clean_output(text: str) -> str:
     """
-    Final aggressive cleaner for DeepSeek's 'hallucinations'.
+    Cleans the 'Thinking' logs and other junk from the Apriel/DeepSeek models.
     """
-    # 1. Kill the specific "prompt =" repetition at the end
-    # This acts like a guillotine - chops off everything after the bad words
-    bad_triggers = ["prompt =", "prompt=", "Define the system", "Example 2:", "The model correctly"]
-    
-    for trigger in bad_triggers:
-        if trigger in text:
-            text = text.split(trigger)[0] # Keep only what came BEFORE the trigger
-
-    # 2. Remove DeepSeek's <think> tags (if any remain)
+    # 1. Remove Apriel/DeepSeek <think> tags
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     
-    # 3. Remove "Jupyter" or "Python" garbage formatting
-    text = text.replace('"""', '').replace("'''", "") # Removes grey box effect
-    text = text.replace('```python', '').replace('```', '')
-    text = re.sub(r'<jupyter_output>.*', '', text, flags=re.DOTALL)
+    # 2. Remove "Reasoning steps" text if it leaks
+    text = re.sub(r'Here are my reasoning steps:.*', '', text, flags=re.DOTALL)
     
+    # 3. Remove "System Prompt" leakage
+    if "prompt =" in text:
+        text = text.split("prompt =")[0]
+        
     return text.strip()
 
-def generate_answer(question: str, qa_chain=None, fallback_llm=None) -> str:
-    """
-    Run question through QA chain, fallback to base LLM if needed.
-    """
-    if qa_chain:
-        try:
-            answer = qa_chain.run(question)
-            if not answer.strip() or len(answer.strip()) < 10:
-                raise ValueError("Answer too short or empty, triggering fallback.")
-        except Exception:
-            if fallback_llm:
-                answer = fallback_llm.invoke(question)
-                answer += "\n\n_(Used general knowledge due to a fallback)_"
-            else:
-                answer = "⚠️ Could not retrieve an answer."
-    else:
-        if fallback_llm:
-            answer = fallback_llm.invoke(question)
-            answer += "\n\n_(No document provided. Used general knowledge.)_"
-        else:
-            answer = "⚠️ No model available to generate an answer."
-
-    return clean_output(answer.strip())
-
-# 📘 Streamlit UI
-st.set_page_config(page_title="AskDoc – Conversational RAG", layout="wide")
-st.title("📘 AskDoc – Smart Conversational PDF Q&A")
-
-# 🧠 Cache uploaded file in session
-def get_file_hash(file_obj):
-    file_obj.seek(0)
-    file_hash = hashlib.md5(file_obj.read()).hexdigest()
-    file_obj.seek(0)
-    return file_hash
-
-uploaded_file = st.file_uploader("Upload a PDF or TXT file", type=["pdf", "txt"])
-question = st.text_input("💬 Ask something about the document")
-submit = st.button("🔍 Ask")
-
-# 🔁 Use cached file if uploader returns None on rerun
-file = uploaded_file or st.session_state.get("uploaded_file")
-
-# 🔧 Text splitting
 def load_and_chunk(file):
     text = ""
-    temp_fd, temp_path = tempfile.mkstemp()
-    os.close(temp_fd)  # Close the file descriptor immediately
-
-    with open(temp_path, "wb") as f:
-        f.write(file.read())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(file.read())
+        tmp_path = tmp.name
 
     try:
         if file.name.endswith(".pdf"):
-            doc = fitz.open(temp_path)
+            doc = fitz.open(tmp_path)
             for page in doc:
                 text += page.get_text()
-            doc.close()  # ✅ CLOSE the document before deleting
+            doc.close()
         else:
-            with open(temp_path, "r", encoding="utf-8") as f:
+            with open(tmp_path, "r", encoding="utf-8") as f:
                 text = f.read()
     finally:
-        os.remove(temp_path)  # ✅ Safe to remove after doc is closed
+        os.remove(tmp_path)
 
-    # ✅ Use better chunking
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    # Use the global import, don't re-import here
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = splitter.split_text(text)
     return chunks
 
+@st.cache_resource
+def get_embedding_model():
+    # Cache to prevent reloading (Faster)
+    return HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
 
-# 🔍 Vectorstore from chunks
 def create_vectorstore(chunks):
     documents = [Document(page_content=chunk) for chunk in chunks]
-    embedding_model = HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
+    embedding_model = get_embedding_model()
     vectordb = FAISS.from_documents(documents, embedding_model)
     return vectordb
 
-# 🧠 Setup LangChain QA chain
 def create_qa_chain(vectordb):
+    # FIXED INDENTATION HERE
     llm = Together(
-            model=TOGETHER_MODEL,
-            temperature=0.0, # Keep it strict
-            together_api_key=TOGETHER_API_KEY,
-            # 🛑 KILL SWITCH: Force the model to stop if it tries to write code or self-grade
-            stop=[
-                "<|eot_id|>", 
-                "<|eom_id|>", 
-                "prompt =", 
-                "prompt=", 
-                "Define the system prompt", 
-                "Example:", 
-                "User:", 
-                "Question:", 
-                "Tactic"
-            ]
-        )
+        model=TOGETHER_MODEL,
+        temperature=0.6,
+        together_api_key=TOGETHER_API_KEY,
+        # STOP SEQUENCES (The Kill Switch)
+        stop=["<|eot_id|>", "<|eom_id|>", "prompt =", "User:", "Example:"]
+    )
     
     memory = ConversationSummaryBufferMemory(
         llm=llm,
@@ -199,71 +149,51 @@ def create_qa_chain(vectordb):
         llm=llm,
         retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
         memory=memory,
-        # KEY FIX: Separate the question rewriting from the answering
         condense_question_prompt=CONDENSE_QUESTION_PROMPT,
         combine_docs_chain_kwargs={"prompt": QA_PROMPT} 
     )
     return qa_chain
 
-
-# Session state setup
+# --- SESSION STATE ---
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
-if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
 if "file_hash" not in st.session_state:
     st.session_state.file_hash = None
-if "doc_loaded" not in st.session_state:    
-    st.session_state.doc_loaded = False
 
+# --- MAIN UI LOGIC ---
+uploaded_file = st.sidebar.file_uploader("Upload PDF or TXT", type=["pdf", "txt"])
 
-# 🔁 Session defaults
-for key, default in {
-    "uploaded_file": None,
-    "file_hash": None,
-    "doc_loaded": False,
-    "vectorstore": None,
-    "qa_chain": None
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+if uploaded_file:
+    # Check if file changed
+    file_obj = uploaded_file
+    file_obj.seek(0)
+    current_hash = hashlib.md5(file_obj.read()).hexdigest()
+    file_obj.seek(0)
 
-# 📥 File processing
-file = uploaded_file or st.session_state["uploaded_file"]
-
-if file is not None:
-    if st.session_state["uploaded_file"] is None:
-        st.session_state["uploaded_file"] = file
-
-    current_hash = get_file_hash(file)
-
-    if current_hash != st.session_state["file_hash"]:
-        chunks = load_and_chunk(file)
-        vectordb = create_vectorstore(chunks)
-        st.session_state.vectorstore = vectordb
-        st.session_state.qa_chain = create_qa_chain(vectordb)
-        st.session_state.file_hash = current_hash
-        st.success(f"✅ Document indexed with {len(chunks)} chunks.")
+    if current_hash != st.session_state.file_hash:
+        with st.spinner("Processing document..."):
+            chunks = load_and_chunk(uploaded_file)
+            vectordb = create_vectorstore(chunks)
+            st.session_state.qa_chain = create_qa_chain(vectordb)
+            st.session_state.file_hash = current_hash
+            st.success(f"✅ Indexed {len(chunks)} chunks!")
     else:
-        st.info("📂 Same document detected. Skipping reprocessing.")
-else:
-    st.info("📂 Please upload a PDF or TXT document.")
+        st.info("Using cached document.")
 
+# Chat Interface
+for msg in st.session_state.get("chat_history", []):
+    st.chat_message(msg["role"]).write(msg["content"])
 
-# 🧾 Ask Question
-if submit and question:
-    with st.spinner("🤖 Thinking..."):
-        fallback_llm = Together(
-            model=TOGETHER_MODEL,
-            temperature=0.7,
-            together_api_key=TOGETHER_API_KEY
-        )
-        answer = generate_answer(
-            question=question,
-            qa_chain=st.session_state.get("qa_chain"),
-            fallback_llm=fallback_llm
-        )
-
-    st.subheader("🟢 Answer:")
-    st.markdown(f"> {answer}")
-
+if question := st.chat_input("Ask about your document..."):
+    st.chat_message("user").write(question)
+    
+    if st.session_state.qa_chain:
+        with st.spinner("Thinking..."):
+            try:
+                res = st.session_state.qa_chain({"question": question})
+                answer = clean_output(res["answer"])
+                st.chat_message("assistant").write(answer)
+            except Exception as e:
+                st.error(f"Error: {e}")
+    else:
+        st.warning("Please upload a document first.")
