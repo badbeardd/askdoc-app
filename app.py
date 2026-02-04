@@ -33,9 +33,16 @@ Standalone question:"""
 CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(condense_prompt_template)
 
 # 2. Prompt to Answer the Question (The Strict Fix)
-qa_prompt_template = """You are a helpful AI assistant. Use the following pieces of context to answer the question at the end.
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
+# --- STRICT PROMPT TO STOP CODE HALLUCINATION ---
+qa_prompt_template = """You are a helpful AI assistant answering questions about a PDF document.
 
+CRITICAL INSTRUCTIONS:
+1. Answer ONLY based on the context provided below.
+2. Do NOT output Python code, Jupyter blocks, or variables like 'response ='.
+3. Do NOT mention 'Tactic 2' or 'reference text'.
+4. Just give the direct answer in plain text.
+
+Context:
 {context}
 
 Question: {question}
@@ -63,17 +70,26 @@ import re
 
 def clean_output(text: str) -> str:
     """
-    Cleans DeepSeek's internal 'thinking' logs and other junk so you only see the final answer.
+    Aggressively removes DeepSeek's 'thinking', 'jupyter', and 'python code' hallucinations.
     """
-    # 1. Remove DeepSeek's <think>...</think> block (The most important fix)
-    # flags=re.DOTALL ensures it catches newlines inside the tags
+    # 1. Remove the specific "response =" coding junk seen in your screenshot
+    text = re.sub(r'response\s*=\s*get_completion.*', '', text)
+    text = re.sub(r'print\(response\).*', '', text)
+    
+    # 2. Remove internal XML-like tags causing the mess
+    text = re.sub(r'<jupyter_output>', '', text)
+    text = re.sub(r'<jupyter_text>', '', text)
+    text = re.sub(r'<jupyter_code>', '', text)
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     
-    # 2. Remove repetitive pipes or markdown junk (from your old function)
-    text = re.sub(r"(\|\s*){3,}", "", text)
+    # 3. Remove Python Docstring quotes (which make the text GREY)
+    text = text.replace('"""', '').replace("'''", "")
     
-    # 3. Remove "AI Assistant" signatures
-    text = re.sub(r"(AI Assistant\.?\s*){2,}", "", text, flags=re.IGNORECASE)
+    # 4. Remove Markdown code blocks (which also make text GREY)
+    text = text.replace('```python', '').replace('```', '')
+
+    # 5. Remove "Tactic 2" or tutorial nonsense
+    text = re.sub(r'Tactic \d+:.*', '', text)
 
     return text.strip()
 
