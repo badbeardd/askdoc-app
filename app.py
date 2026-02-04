@@ -41,6 +41,7 @@ CRITICAL INSTRUCTIONS:
 2. Do NOT output Python code, Jupyter blocks, or variables like 'response ='.
 3. Do NOT mention 'Tactic 2' or 'reference text'.
 4. Just give the direct answer in plain text.
+"5. STOP immediately after answering. Do not analyze or critique your own answer."
 
 Context:
 {context}
